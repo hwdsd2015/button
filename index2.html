@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Press</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 40%, #2a2340 0%, #14111f 70%);
+      color: #fff;
+      font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding-inline: 16px;
+      transition: background-color 300ms;
+    }
+
+    body.flash-miss { animation: flashMiss 450ms ease-out; }
+    @keyframes flashMiss {
+      from { box-shadow: inset 0 0 0 100vmax rgba(255, 40, 60, 0.28); }
+      to   { box-shadow: inset 0 0 0 100vmax rgba(255, 40, 60, 0); }
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .game {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .hud {
+      font-size: 14px;
+      letter-spacing: 0.2em;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.55);
+    }
+    .hud b { color: #ffd166; font-size: 18px; letter-spacing: 0.05em; margin-left: 6px; }
+
+    .msg {
+      min-height: 1.5em;
+      font-size: 16px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.75);
+      text-align: center;
+    }
+    .msg.bad { color: #ff6b81; }
+
+    .stage {
+      position: relative;
+      width: 340px;
+      height: 340px;
+      max-width: calc(100vw - 32px);
+      max-height: calc(100vw - 32px);
+    }
+
+    .stage.shake { animation: shake 400ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+    @keyframes shake {
+      10%, 90% { transform: translateX(-2px); }
+      20%, 80% { transform: translateX(5px); }
+      30%, 50%, 70% { transform: translateX(-9px); }
+      40%, 60% { transform: translateX(9px); }
+    }
+
+    svg.dial {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .track { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 16; }
+
+    .zone {
+      fill: none;
+      stroke: #06d6a0;
+      stroke-width: 16;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 8px rgba(6, 214, 160, 0.6));
+      transition: stroke 150ms;
+    }
+    .zone.hidden { opacity: 0; }
+    .zone.hit { animation: zoneHit 300ms ease-out; }
+    @keyframes zoneHit {
+      from { stroke: #fff; stroke-width: 26; }
+      to   { stroke: #06d6a0; stroke-width: 16; }
+    }
+
+    .needle {
+      fill: #fff;
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
+    }
+    .needle.dead { fill: #ff4d6d; filter: drop-shadow(0 0 8px rgba(255, 77, 109, 0.9)); }
+
+    .wrap {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 65%;
+      height: 65%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* the base the button sits in */
+    .wrap::before {
+      content: "";
+      position: absolute;
+      inset: -8%;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #0e0c16, #25203a);
+      box-shadow:
+        inset 0 6px 14px rgba(0, 0, 0, 0.7),
+        0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    button {
+      position: absolute;
+      inset: 0;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      outline: none;
+      background: #b8123f; /* the "side" of the button */
+      box-shadow: 0 18px 30px rgba(0, 0, 0, 0.5);
+      transition: box-shadow 120ms ease;
+      font: inherit;
+      color: inherit;
+    }
+
+    button .top {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #ff7a9c 0%, #ff2e63 45%, #d61850 100%);
+      transform: translateY(-16px);
+      transition: transform 380ms cubic-bezier(0.3, 1.8, 0.4, 1);
+      box-shadow:
+        inset 0 -6px 12px rgba(0, 0, 0, 0.18),
+        inset 0 6px 12px rgba(255, 255, 255, 0.35);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    /* glossy highlight */
+    button .top::after {
+      content: "";
+      position: absolute;
+      top: 12%;
+      left: 22%;
+      width: 42%;
+      height: 24%;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.35);
+      filter: blur(6px);
+      transform: rotate(-20deg);
+      pointer-events: none;
+    }
+
+    .score {
+      position: relative;
+      z-index: 1;
+      font-size: 64px;
+      font-weight: 800;
+      line-height: 1;
+      text-shadow: 0 3px 0 rgba(120, 0, 30, 0.45);
+      font-variant-numeric: tabular-nums;
+    }
+    .score.small { font-size: 34px; letter-spacing: 0.08em; }
+    .score.bump { animation: bump 250ms cubic-bezier(0.3, 1.8, 0.4, 1); }
+    @keyframes bump { from { transform: scale(1.35); } to { transform: scale(1); } }
+
+    button:hover .top { transform: translateY(-19px); }
+
+    button.pressed .top {
+      transform: translateY(-3px);
+      transition: transform 60ms ease-out;
+    }
+
+    button.pressed { box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5); }
+
+    button:focus-visible { box-shadow: 0 0 0 4px #fff, 0 18px 30px rgba(0,0,0,.5); }
+
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.45);
+      transform: scale(0);
+      animation: ripple 600ms ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes ripple { to { transform: scale(4); opacity: 0; } }
+
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 3px solid #06d6a0;
+      pointer-events: none;
+      animation: ring 700ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    }
+    @keyframes ring {
+      from { transform: scale(1); opacity: 0.9; }
+      to   { transform: scale(1.9); opacity: 0; }
+    }
+
+    .pop {
+      position: absolute;
+      left: 50%;
+      top: 4%;
+      transform: translateX(-50%);
+      font-weight: 800;
+      font-size: 22px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 5;
+      animation: pop 750ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    }
+    .pop.good { color: #06d6a0; }
+    .pop.perfect { color: #ffd166; font-size: 28px; }
+    @keyframes pop {
+      0%   { opacity: 0; transform: translate(-50%, 10px) scale(0.6); }
+      20%  { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+      100% { opacity: 0; transform: translate(-50%, -30px) scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      button .top, button.pressed .top { transition: none; }
+      .ring, .ripple { display: none; }
+      .stage.shake, .score.bump { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="fx"></canvas>
+
+  <main class="game">
+    <div class="hud">BEST<b id="best">0</b></div>
+
+    <div class="stage" id="stage">
+      <svg class="dial" viewBox="0 0 340 340" aria-hidden="true">
+        <circle class="track" cx="170" cy="170" r="150" />
+        <path class="zone hidden" id="zone" />
+        <circle class="needle" id="needle" cx="170" cy="20" r="11" />
+      </svg>
+
+      <div class="wrap" id="wrap">
+        <button id="btn" aria-label="Press when the dot is in the green zone">
+          <span class="top" id="top"><span class="score small" id="score">TAP</span></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="msg" id="msg" aria-live="polite">Hit the button when the dot is in the green zone</div>
+  </main>
+
+  <script>
+  (() => {
+    const btn = document.getElementById("btn");
+    const btnTop = document.getElementById("top");
+    const wrap = document.getElementById("wrap");
+    const stage = document.getElementById("stage");
+    const zoneEl = document.getElementById("zone");
+    const needleEl = document.getElementById("needle");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const msgEl = document.getElementById("msg");
+    const canvas = document.getElementById("fx");
+    const ctx = canvas.getContext("2d");
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // ---------- sound ----------
+    let audio;
+    function getAudio() {
+      audio ??= new (window.AudioContext || window.webkitAudioContext)();
+      return audio;
+    }
+
+    function tone({ type = "sine", from, to = from, dur, vol, at = 0, filter }) {
+      const ac = getAudio();
+      const t = ac.currentTime + at;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, t);
+      if (to !== from) osc.frequency.exponentialRampToValueAtTime(to, t + dur * 0.8);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      let node = osc.connect(gain);
+      if (filter) {
+        const f = ac.createBiquadFilter();
+        f.type = "lowpass";
+        f.frequency.value = filter;
+        node = gain.connect(f);
+      }
+      node.connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.01);
+    }
+
+    function thock() {
+      tone({ from: 180, to: 60, dur: 0.12, vol: 0.6 });
+      const ac = getAudio();
+      const buf = ac.createBuffer(1, ac.sampleRate * 0.02, ac.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      const noise = ac.createBufferSource();
+      const ng = ac.createGain();
+      const hp = ac.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 2000;
+      ng.gain.value = 0.25;
+      noise.buffer = buf;
+      noise.connect(hp).connect(ng).connect(ac.destination);
+      noise.start();
+    }
+
+    const pentatonic = [0, 2, 4, 7, 9];
+    function hitSound(score, perfect) {
+      const step = score % 20;
+      const semis = pentatonic[step % 5] + 12 * Math.floor(step / 5);
+      const freq = 392 * Math.pow(2, semis / 12);
+      tone({ type: "triangle", from: freq, dur: 0.35, vol: 0.25 });
+      if (perfect) {
+        tone({ type: "sine", from: freq * 2, dur: 0.3, vol: 0.12, at: 0.06 });
+        tone({ type: "sine", from: freq * 3, dur: 0.3, vol: 0.08, at: 0.12 });
+      }
+    }
+
+    function missSound() {
+      tone({ type: "sawtooth", from: 160, to: 55, dur: 0.45, vol: 0.3, filter: 900 });
+    }
+
+    // ---------- particles ----------
+    let particles = [];
+    function resize() {
+      canvas.width = innerWidth * devicePixelRatio;
+      canvas.height = innerHeight * devicePixelRatio;
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
+    addEventListener("resize", resize);
+    resize();
+
+    const colors = ["#ff2e63", "#ff7a9c", "#ffd166", "#06d6a0", "#7aa2ff", "#ffffff"];
+
+    function burst(cx, cy, count, power) {
+      if (reduceMotion) return;
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = (2 + Math.random() * 6) * power;
+        particles.push({
+          x: cx,
+          y: cy,
+          vx: Math.cos(a) * speed,
+          vy: Math.sin(a) * speed - 2,
+          size: 3 + Math.random() * 5,
+          rot: Math.random() * Math.PI,
+          vr: (Math.random() - 0.5) * 0.3,
+          life: 1,
+          decay: 0.015 + Math.random() * 0.015,
+          color: colors[(Math.random() * colors.length) | 0],
+          shape: Math.random() < 0.5 ? "circle" : "rect",
+        });
+      }
+    }
+
+    function drawParticles() {
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      if (!particles.length) return;
+      particles = particles.filter((p) => p.life > 0);
+      for (const p of particles) {
+        p.vx *= 0.96;
+        p.vy = p.vy * 0.96 + 0.25;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        p.life -= p.decay;
+        ctx.globalAlpha = Math.max(p.life, 0);
+        ctx.fillStyle = p.color;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        if (p.shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        }
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ---------- dial geometry ----------
+    const C = 170;
+    const R = 150;
+    const NEEDLE_SLACK = 4; // degrees of forgiveness for the dot's size
+
+    const norm = (a) => ((a % 360) + 360) % 360;
+    const diff = (a, b) => ((a - b + 540) % 360) - 180; // signed, in [-180, 180)
+    const point = (deg) => {
+      const r = (deg * Math.PI) / 180;
+      return [C + R * Math.sin(r), C - R * Math.cos(r)];
+    };
+
+    function drawZone() {
+      const [x1, y1] = point(zoneCenter - zoneHalf);
+      const [x2, y2] = point(zoneCenter + zoneHalf);
+      const large = zoneHalf * 2 > 180 ? 1 : 0;
+      zoneEl.setAttribute("d", `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}`);
+    }
+
+    function drawNeedle() {
+      const [x, y] = point(angle);
+      needleEl.setAttribute("cx", x);
+      needleEl.setAttribute("cy", y);
+    }
+
+    function toScreen(deg) {
+      const [x, y] = point(deg);
+      const r = stage.getBoundingClientRect();
+      return [r.left + (x / 340) * r.width, r.top + (y / 340) * r.height];
+    }
+
+    // ---------- game state ----------
+    let mode = "ready"; // ready | playing | over
+    let angle = 0;
+    let dir = 1;
+    let speed = 0;       // degrees per second
+    let zoneCenter = 180;
+    let zoneHalf = 30;
+    let score = 0;
+    let enteredZone = false;
+    let lockUntil = 0;
+
+    let best = 0;
+    try { best = Number(localStorage.getItem("press-best")) || 0; } catch {}
+    bestEl.textContent = best;
+
+    function setScore(text, small = false) {
+      scoreEl.textContent = text;
+      scoreEl.classList.toggle("small", small);
+      scoreEl.classList.remove("bump");
+      void scoreEl.offsetWidth;
+      scoreEl.classList.add("bump");
+    }
+
+    function placeZone() {
+      const ahead = 110 + Math.random() * 150;
+      zoneCenter = norm(angle + dir * ahead);
+      enteredZone = false;
+      drawZone();
+    }
+
+    function start() {
+      mode = "playing";
+      score = 0;
+      dir = 1;
+      speed = 130;
+      zoneHalf = 30;
+      needleEl.classList.remove("dead");
+      zoneEl.classList.remove("hidden");
+      msgEl.classList.remove("bad");
+      msgEl.textContent = " ";
+      setScore(0);
+      placeZone();
+      tone({ type: "triangle", from: 392, dur: 0.15, vol: 0.2 });
+      tone({ type: "triangle", from: 587, dur: 0.25, vol: 0.2, at: 0.09 });
+    }
+
+    function hit(offset) {
+      const perfect = Math.abs(offset) <= Math.max(zoneHalf * 0.25, 3);
+      score += perfect ? 2 : 1;
+      setScore(score);
+      hitSound(score, perfect);
+      navigator.vibrate?.(perfect ? [10, 30, 10] : 12);
+
+      const [sx, sy] = toScreen(angle);
+      burst(sx, sy, perfect ? 50 : 26, perfect ? 1.5 : 1);
+
+      zoneEl.classList.remove("hit");
+      void zoneEl.offsetWidth;
+      zoneEl.classList.add("hit");
+
+      spawn("ring", wrap);
+      const pop = spawn("pop " + (perfect ? "perfect" : "good"), stage);
+      pop.textContent = perfect ? "PERFECT +2" : "+1";
+
+      // get harder: faster, narrower, and flip direction
+      dir *= -1;
+      speed = Math.min(130 + score * 11, 480);
+      zoneHalf = Math.max(30 - score * 1.1, 8);
+      placeZone();
+    }
+
+    function fail(reason) {
+      mode = "over";
+      lockUntil = performance.now() + 650;
+      needleEl.classList.add("dead");
+      missSound();
+      navigator.vibrate?.([40, 40, 80]);
+
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        try { localStorage.setItem("press-best", best); } catch {}
+        msgEl.textContent = `${reason} New best: ${score}! Tap to play again`;
+        msgEl.classList.remove("bad");
+      } else {
+        msgEl.textContent = `${reason} Tap to try again`;
+        msgEl.classList.add("bad");
+      }
+
+      if (!reduceMotion) {
+        stage.classList.remove("shake");
+        document.body.classList.remove("flash-miss");
+        void stage.offsetWidth;
+        stage.classList.add("shake");
+        document.body.classList.add("flash-miss");
+      }
+    }
+
+    function spawn(className, parent) {
+      const el = document.createElement("span");
+      el.className = className;
+      parent.appendChild(el);
+      el.addEventListener("animationend", () => el.remove());
+      return el;
+    }
+
+    // ---------- main loop ----------
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+
+      if (mode === "playing") {
+        angle = norm(angle + dir * speed * dt);
+        const offset = diff(zoneCenter, angle) * dir; // > 0 means zone is still ahead
+        if (Math.abs(offset) <= zoneHalf + NEEDLE_SLACK) enteredZone = true;
+        else if (enteredZone && offset < 0) fail("Too late!");
+      } else if (mode === "ready") {
+        angle = norm(angle + 60 * dt); // idle spin
+      }
+
+      drawNeedle();
+      drawParticles();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // ---------- input ----------
+    let isDown = false;
+
+    function press(e) {
+      if (isDown) return;
+      isDown = true;
+      btn.classList.add("pressed");
+      thock();
+
+      const r = btnTop.getBoundingClientRect();
+      const x = e.clientX ?? r.left + r.width / 2;
+      const y = e.clientY ?? r.top + r.height / 2;
+      const size = r.width / 2;
+      const rip = spawn("ripple", btnTop);
+      rip.style.width = rip.style.height = size + "px";
+      rip.style.left = x - r.left - size / 2 + "px";
+      rip.style.top = y - r.top - size / 2 + "px";
+
+      if (performance.now() < lockUntil) return;
+
+      if (mode === "playing") {
+        const offset = diff(zoneCenter, angle) * dir;
+        if (Math.abs(offset) <= zoneHalf + NEEDLE_SLACK) hit(offset);
+        else fail(enteredZone ? "Too late!" : "Too early!");
+      } else {
+        start();
+      }
+    }
+
+    function release() {
+      if (!isDown) return;
+      isDown = false;
+      btn.classList.remove("pressed");
+    }
+
+    btn.addEventListener("pointerdown", (e) => {
+      btn.setPointerCapture(e.pointerId);
+      press(e);
+    });
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointercancel", release);
+
+    // Space / Enter work from anywhere on the page
+    addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        if (!e.repeat) press({});
+      }
+    });
+    addEventListener("keyup", (e) => {
+      if (e.key === " " || e.key === "Enter") release();
+    });
+  })();
+  </script>
+</body>
+</html>
+# button2
